@@ -46,7 +46,18 @@ void error(const char *msg)
 //find the current mac
 void update_mac()
 {
+	//socket id. Used for counter before that.
 	int s;
+	//check if the current mac is zeroed. Only if it is
+	//update is required.
+	for(s = 0; s < 6; ++s)
+	{
+		if(current_mac[s] != 0)
+		{
+			return;
+		}
+	}
+
     struct ifreq buffer;
 
     s = socket(PF_INET, SOCK_DGRAM, 0);
@@ -65,6 +76,14 @@ void update_mac()
 	memcpy(current_mac, buffer.ifr_hwaddr.sa_data, 6);
 }
 
+//***** The Ethernet Packet *******//
+//Consists of 3 parts: 
+//1. dest mac
+//2. source mac
+//3. protocol ontop of ethernet.
+//Return type:
+//1. loc of the end of the buffer.
+//used to pass as address of the buffer for the next frame
 char* build_ethernet(char* buffer)
 {
 	memcpy(buffer, eth_dest, sizeof(char) * 6);
@@ -73,6 +92,12 @@ char* build_ethernet(char* buffer)
 	return buffer+6+6+2;
 }
 
+//***** The Arp Packet *******//
+//Address resolution protocol packet:
+//->code is enough documented
+//Return type:
+//1. loc of the end of the buffer.
+//used to pass as address of the buffer for the next frame
 char* build_arp(char* arp, char action)
 {
 	//hardware type: Ethernet
@@ -81,9 +106,9 @@ char* build_arp(char* arp, char action)
 	//protocol type: IP
 	arp[2] = 0x08;
 	arp[3] = 0x00;
-	//hardware size:
+	//hardware size: (MAC - 6 bytes)
 	arp[4] = 0x06;
-	//protocol size:
+	//protocol size: (IPv4 - 4 bytes)
 	arp[5] = 0x04;
 	//opcode: take from action(1 = request, 2 = reply)
 	arp[6] = 0x00;
@@ -192,7 +217,7 @@ void init_socket()
 
 }
 
-void send_arp_reply()
+void send_arp_packet(char action)
 {
 	
 	int send_result = 0;
@@ -202,34 +227,22 @@ void send_arp_reply()
 
 	//---Build the packet---//
 	packet = build_ethernet(buffer);
-	build_arp(packet, 0x02);
+	build_arp(packet, action);
 
 	send_result = sendto(sockfd, buffer, 14+28, 0,
 					(struct sockaddr*)&socket_address, sizeof(socket_address));
 
-	printf("%i\n", send_result);
+	printf("Bytes sent: %i\n", send_result);
 }
 
-void send_arp_request(){
-	char buffer[48]; int send_result = 0;
-	char *packet = buffer;
-
-	//---Build the packet---//
-	packet = build_ethernet(buffer);
-	build_arp(packet, 0x01);
-
-	send_result = sendto(sockfd, buffer, 14+28, 0,
-					(struct sockaddr*)&socket_address, sizeof(socket_address));
-
-	printf("%i\n", send_result);
-}
 
 
 
 int main(int argc, char* argv[])
 {
 	if(argc < 2){
-		printf("USAGE: arpt [dev] [action] [sender ip] [sender mac] [dest ip] [dest mac] [param 1]..[param n]\n");
+		printf("USAGE: arpt [dev] [action] [sender ip] [sender mac]\
+ [dest ip] [dest mac] [param 1]..[param n]\n");
 		exit(0);
 	}
 	//get the device name
@@ -241,14 +254,16 @@ int main(int argc, char* argv[])
 		ascii_ip_to_array(argv[5], target_ip);
 		ascii_mac_to_array(argv[6], eth_dest);
 		init_socket();
-		send_arp_request();
+		//1 for request
+		send_arp_packet(0x01);
 	}else if(!strcmp(argv[2], "reply")){
 		ascii_ip_to_array(argv[3], sender_ip);
 		ascii_mac_to_array(argv[4], eth_source);
 		ascii_ip_to_array(argv[5], target_ip);
 		ascii_mac_to_array(argv[6], eth_dest);
 		init_socket();
-		send_arp_reply();
+		//2 for reply
+		send_arp_packet(0x02);
 	}else{
 		printf("Unknown Command.\n");
 		exit(0);
