@@ -236,15 +236,76 @@ void send_arp_packet(char action)
 }
 
 
+enum arpt_action
+{
+	ARP_REQUEST,
+	ARP_REPLY,
+	ARP_LISTEN,
+	ARP_ERROR
+};
 
+//flags for the actions request/reply
+struct standart_flags
+{
+	char action_flag : 2;
+	char interval_flag : 1;
+	char count_flag : 1;
+	char not_used : 4;
+	int interval_value : 32;
+	int count_value : 32;
+};
+
+void ExecuteFlags(struct standart_flags* flags)
+{
+	char arp_action; int i;
+	if(flags->action_flag == ARP_REQUEST)
+	{
+		arp_action = 1;
+	}else if(flags->action_flag == ARP_REPLY)
+	{
+		arp_action = 2;
+	}
+	//prepare for firing
+	init_socket();
+	if(flags->action_flag == ARP_REPLY || flags->action_flag == ARP_REQUEST)
+	{
+		if(flags->count_flag == 0)
+		{
+			flags->count_value = 1;
+		}
+		for(i = 0; i < flags->count_value; ++i)
+		{
+			send_arp_packet(arp_action);
+			if(flags->interval_flag != 0)
+			{
+				usleep(flags->interval_value*1000);
+			}
+		}
+	}
+}
+
+char* get_next_arg(int argc, int pos, char* argv[])
+{
+	if(pos < argc)
+	{
+		return argv[pos];
+	}
+	error("Error: param expected.");
+	//this line will never get reached. just avoid compiler warnings
+	return 0;
+}
 
 int main(int argc, char* argv[])
 {
-	if(argc < 2){
+	struct standart_flags sflags; int i;
+	memset(&sflags, 0, sizeof(struct standart_flags));
+
+	if(argc < 6){
 		printf("USAGE: arpt [dev] [action] [sender ip] [sender mac]\
  [dest ip] [dest mac] [param 1]..[param n]\n");
 		exit(0);
 	}
+	//***** Grab the arguments and turn them into easy to read struct *******//
 	//get the device name
 	strcpy(device, argv[1]);
 	//get the action
@@ -253,21 +314,32 @@ int main(int argc, char* argv[])
 		ascii_mac_to_array(argv[4], eth_source);
 		ascii_ip_to_array(argv[5], target_ip);
 		ascii_mac_to_array(argv[6], eth_dest);
-		init_socket();
-		//1 for request
-		send_arp_packet(0x01);
+		sflags.action_flag = ARP_REQUEST;
 	}else if(!strcmp(argv[2], "reply")){
 		ascii_ip_to_array(argv[3], sender_ip);
 		ascii_mac_to_array(argv[4], eth_source);
 		ascii_ip_to_array(argv[5], target_ip);
 		ascii_mac_to_array(argv[6], eth_dest);
-		init_socket();
-		//2 for reply
-		send_arp_packet(0x02);
+		sflags.action_flag = ARP_REPLY;
 	}else{
 		printf("Unknown Command.\n");
+		sflags.action_flag = ARP_ERROR;
 		exit(0);
 	}
+	for(i = 7; i < argc; ++i)
+	{
+		if(!strcmp(argv[i], "-i"))
+		{
+			sflags.interval_flag = 1;
+			sflags.interval_value = atoi(get_next_arg(argc, i+1, argv));
+		}else if(!strcmp(argv[i], "-c"))
+		{
+			sflags.count_flag = 1;
+			sflags.count_value = atoi(get_next_arg(argc, i+1, argv));
+		}
+	}
 
+	//EXECUTE THE EASY TO READ STRUCT
+	ExecuteFlags(&sflags);
 	return 0;
 }
