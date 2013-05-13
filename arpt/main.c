@@ -300,9 +300,12 @@ int main(int argc, char* argv[])
 	struct standart_flags sflags; int i;
 	memset(&sflags, 0, sizeof(struct standart_flags));
 
-	if(argc < 6){
+	if(argc < 7){
 		printf("USAGE: arpt [dev] [action] [sender ip] [sender mac]\
- [dest ip] [dest mac] [param 1]..[param n]\n");
+ [dest ip] [dest mac] [option 1]..[option n]\n\
+OPTIONS:\n\
+ -i \t Interval in milliseconds\n\
+ -c \t Count of messages to send\n");
 		exit(0);
 	}
 	//***** Grab the arguments and turn them into easy to read struct *******//
